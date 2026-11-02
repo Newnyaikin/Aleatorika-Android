@@ -1,0 +1,78 @@
+name: Android - build APK and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.apk.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build APK; sign release when secrets are configured
+        id: apk
+        env:
+          ALLOW_SIGNING: ${{ github.event_name != 'pull_request' }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash tools/build-apk.sh
+      - name: Package source at this commit
+        run: git archive --format=zip --prefix=Aleatorika-Android/ -o dist/Aleatorika-Android-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aleatorika-Android-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Aleatorika-Android-${{ github.run_number }}
+          path: dist
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          SIGNED: ${{ needs.build.outputs.signed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$SIGNED" == true ]]; then
+            printf '%s\n' 'Подписанный Android release APK — Aleatorika-1.0.apk.' 'Файл с -test — отдельная отладочная сборка.' > notes.md
+          else
+            printf '%s\n' 'Тестовая сборка: APK подписан отладочным, а не постоянным ключом.' 'При следующей CI-сборке тестовый ключ может измениться; обновление поверх старого APK может не установиться.' 'Не удаляйте приложение, если важна локальная статистика. Для постоянных обновлений настройте Android signing secrets.' > notes.md
+          fi
+          flags=()
+          if [[ "$SIGNED" != true ]]; then flags+=(--prerelease); fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "Алеаторика Android $TAG" --notes-file notes.md "${flags[@]}"
+          fi
+          files=(dist/Aleatorika-1.0-test.apk dist/Aleatorika-Android-source.zip)
+          if [[ "$SIGNED" == true ]]; then files+=(dist/Aleatorika-1.0.apk); fi
+          gh release upload "$TAG" "${files[@]}" --clobber

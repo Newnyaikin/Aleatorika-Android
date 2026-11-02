@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "startTimeMs": 30000,
+  "comboEvery": 3,
+  "comboBonusMs": 5000,
+  "noteAttempts": 3,
+  "practiceRounds": 10,
+  "tuningMidi": [
+    40,
+    45,
+    50,
+    55,
+    59,
+    64
+  ],
+  "referenceAHz": 440,
+  "chords": [
+    "C",
+    "D",
+    "E",
+    "G",
+    "A",
+    "Am",
+    "Dm",
+    "Em"
+  ],
+  "notePitchClasses": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "fretRanges": [
+    5,
+    12,
+    19,
+    24
+  ]
+}
